@@ -1,5 +1,5 @@
 #
-#  Copyright (C) 2020-2021 Bernhard Schelling
+#  Copyright (C) 2020 Bernhard Schelling
 #
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -28,79 +28,23 @@ PIPETONULL := $(if $(ISWIN),>nul 2>nul,>/dev/null 2>/dev/null)
 PROCCPU    := $(if $(ISWIN),GenuineIntel Intel sse sse2,$(if $(ISMAC),Unknown,$(shell cat /proc/cpuinfo)))
 
 SOURCES := \
-  *.cpp       \
-  src/*.cpp   \
-  src/*/*.cpp \
-  src/*/*/*.cpp
+	*.cpp       \
+	src/*.cpp   \
+	src/*/*.cpp \
+	src/*/*/*.cpp
 
-ifneq ($(ISWIN),)
-  OUTNAME := dosbox_pure_libretro.dll
-  CXX     ?= g++
-  LDFLAGS := -Wl,--gc-sections -fno-ident
-else ifneq ($(ISMAC),)
-  OUTNAME := dosbox_pure_libretro.dylib
-  CXX     ?= clang++
-  LDFLAGS := -Wl,-dead_strip
-else
-  OUTNAME := dosbox_pure_libretro.so
-  CXX     ?= g++
-  LDFLAGS := -Wl,--gc-sections -fno-ident
-endif
+OUTNAME := dosbox_pure_libretro.so
 
-ifeq ($(platform), gcw0)
-  # You must used the toolchain built on or around 2014-08-20
-  CXX := /opt/gcw0-toolchain/usr/bin/mipsel-linux-g++
-  CPUFLAGS := -ffast-math -march=mips32r2 -mtune=mips32r2 -mhard-float -fexpensive-optimizations -frename-registers
-  # Here's a stack of other flags that might be useful (?)
-  # -mplt -mno-shared
-  # -fdata-sections
-  # -DDINGUX=1 -MMD
-  # -Wall -Wno-unused-variable
-  # -D_GNU_SOURCE
-  # -D__STDC_CONSTANT_MACROS
-  # -D__LIBRETRO__
-  
-else ifneq ($(and $(filter ARMv7,$(PROCCPU)),$(filter neon,$(PROCCPU))),)
-  CPUFLAGS := -mcpu=cortex-a72 -mfpu=neon-fp-armv8 -mfloat-abi=hard -ffast-math
-  ifneq ($(findstring version 10,$(shell g++ -v 2>&1)),)
-    # Switch to gcc 9 to avoid buggy assembly genetation of gcc 10
-    # On armv7l, gcc 10.2 with -O2 on the file core_dynrec.cpp generates assembly that wrongfully passes NULL to the runcode function
-    # resulting in a segfault crash. It can be observed by writing block->cache.start to stdout twice where it is NULL at first
-    # and then the actual value thereafter. This affects upstream SVN DOSBox as well as this core.
-    CXX := g++-9
-  endif
-else
-  CPUFLAGS :=
-endif
-
-ifeq ($(BUILD),DEBUG)
-  BUILDDIR := debug
-  CFLAGS   := -DDEBUG -D_DEBUG -g -O0
-else ifeq ($(BUILD),PROFILE)
-  BUILDDIR := profile
-  CFLAGS   := -DNDEBUG -O2
-else ifeq ($(BUILD),RELEASEDBG)
-  BUILDDIR := releasedbg
-  CFLAGS   := -DNDEBUG -ggdb -O2
-  LDFLAGS  += -ggdb -O2
-else ifeq ($(BUILD),ASAN)
-  BUILDDIR := asan
-  CFLAGS   := -DDEBUG -D_DEBUG -g -O0 -fsanitize=address -fno-omit-frame-pointer
-  LDFLAGS  += -fsanitize=address -g -O0
-else
-  BUILD    := RELEASE
-  BUILDDIR := release
-  CFLAGS   := -DNDEBUG -O2 -fno-ident
-  LDFLAGS  += -O2
-endif
-
-CFLAGS  += $(CPUFLAGS) -std=c++11 -fpic -fomit-frame-pointer -fno-exceptions -fno-non-call-exceptions -Wno-address-of-packed-member -Wno-format -Wno-switch
+CPUFLAGS := -Ofast -march=armv8-a+crc+fp+simd -mcpu=cortex-a35 -flto -DUSE_RENDER_THREAD -DNO_ASM -DARM_ASM -frename-registers -ftree-vectorize
+CXX := g++-9
+BUILD    := RELEASE
+BUILDDIR := release
+CFLAGS   := -DNDEBUG -Ofast -fno-ident
+LDFLAGS  += -Ofast -fno-ident
+CFLAGS  += $(CPUFLAGS) -fpic -fomit-frame-pointer -fno-exceptions -fno-non-call-exceptions -Wno-psabi -Wno-format
 CFLAGS  += -fvisibility=hidden -ffunction-sections
 CFLAGS  += -pthread -D__LIBRETRO__ -Iinclude
-#CFLAGS  += -fdata-sections #saves around 32 bytes on most platforms but wrongfully adds up to 60MB on msys2
-
-LDFLAGS += $(CPUFLAGS) -lpthread -shared
-#LDFLAGS += -static-libstdc++ -static-libgcc #adds 1MB to output and still dynamically links against libc and libm
+LDFLAGS += $(CPUFLAGS) -lpthread -Wl,--gc-sections -shared
 
 .PHONY: all clean
 all: $(OUTNAME)
@@ -121,9 +65,8 @@ clean:
 $(OUTNAME) : $(OBJS)
 	$(info Linking $@ ...)
 	$(CXX) $(LDFLAGS) -o $@ $^
-	@-/opt/gcw0-toolchain/usr/mipsel-gcw0-linux-uclibc/bin/strip --strip-all $@ $(PIPETONULL);true # gcw0
-	@-strip --strip-all $@ $(PIPETONULL);true # others
-	@-strip -xS $@ $(PIPETONULL);true # mac
+	@-strip --strip-all $@ $(PIPETONULL);true #others
+	@-strip -xS $@ $(PIPETONULL);true #mac
 
 define COMPILE
 	$(info Compiling $2 ...)
