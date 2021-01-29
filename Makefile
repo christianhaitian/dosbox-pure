@@ -36,7 +36,7 @@ SOURCES := \
 OUTNAME := dosbox_pure_libretro.so
 
 CPUFLAGS := -Ofast -march=armv8-a+crc+fp+simd -mcpu=cortex-a35 -flto -DUSE_RENDER_THREAD -DNO_ASM -DARM_ASM -frename-registers -ftree-vectorize
-CXX := g++-9
+CXX := g++-8
 BUILD    := RELEASE
 BUILDDIR := release
 CFLAGS   := -DNDEBUG -Ofast -fno-ident
